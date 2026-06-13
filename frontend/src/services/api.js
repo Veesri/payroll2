@@ -11,7 +11,7 @@ import axios from 'axios';
 
 // ─── Environment Config ───────────────────────────────────────────────────────
 export const ENV = {
-  API_URL:      import.meta.env.VITE_API_URL      || 'http://localhost:8000/api',
+  API_URL:      import.meta.env.VITE_API_URL      || 'https://payroll2-mnuo.onrender.com/api',
   APP_NAME:     import.meta.env.VITE_APP_NAME     || 'PayrollPro',
   COMPANY_NAME: import.meta.env.VITE_COMPANY_NAME || 'PayrollPro',
   VERSION:      import.meta.env.VITE_APP_VERSION  || '1.0.0',
