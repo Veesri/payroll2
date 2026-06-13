@@ -47,6 +47,8 @@ api.interceptors.request.use(
 );
 
 // ─── Response Interceptor — Auto-Refresh on 401 ───────────────────────────────
+let refreshPromise = null;
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -56,12 +58,22 @@ api.interceptors.response.use(
       try {
         const refreshToken = sessionStorage.getItem('refresh_token');
         if (refreshToken) {
-          const res = await axios.post(
-            `${ENV.API_URL}/auth/token/refresh/`,
-            { refresh: refreshToken }
-          );
-          const newAccess = res.data.access;
-          setAccessToken(newAccess);
+          if (!refreshPromise) {
+            refreshPromise = axios.post(
+              `${ENV.API_URL}/auth/token/refresh/`,
+              { refresh: refreshToken }
+            ).then(res => {
+              refreshPromise = null;
+              const newAccess = res.data.access;
+              setAccessToken(newAccess);
+              return newAccess;
+            }).catch(err => {
+              refreshPromise = null;
+              throw err;
+            });
+          }
+
+          const newAccess = await refreshPromise;
           originalRequest.headers['Authorization'] = `Bearer ${newAccess}`;
           return api(originalRequest);
         }
@@ -85,6 +97,7 @@ export const authAPI = {
   register:       (data)   => api.post('/auth/register/', data),
   profile:        ()       => api.get('/auth/profile/'),
   changePassword: (data)   => api.post('/auth/change-password/', data),
+  refresh:        (refresh)=> axios.post(`${ENV.API_URL}/auth/token/refresh/`, { refresh }),
 };
 
 // ─── Department APIs ──────────────────────────────────────────────────────────

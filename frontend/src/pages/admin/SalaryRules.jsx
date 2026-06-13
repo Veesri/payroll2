@@ -11,9 +11,9 @@ import { salaryRulesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
 const defaultForm = {
-  group_name: '', basic_salary_min: 0, basic_salary_max: 1000000,
-  hra_pct: 40, da_pct: 20, medical_pct: 5, travel_pct: 5,
-  pf_pct: 12, esi_pct: 0.75, pt_amount: 200, is_active: true,
+  name: '', min_salary: 0, max_salary: '',
+  hra_percent: 40, da_percent: 20, medical_allowance: 1000, travel_allowance: 1000,
+  pf_percent: 12, esi_percent: 0.75, pt_amount: 200, is_active: true,
 };
 
 export default function AdminSalaryRules() {
@@ -37,17 +37,37 @@ export default function AdminSalaryRules() {
 
   const openCreate = () => { setForm(defaultForm); setEditId(null); setDialogOpen(true); };
   const openEdit = (g) => {
-    setForm({ group_name: g.group_name, basic_salary_min: g.basic_salary_min, basic_salary_max: g.basic_salary_max, hra_pct: g.hra_pct, da_pct: g.da_pct, medical_pct: g.medical_pct, travel_pct: g.travel_pct, pf_pct: g.pf_pct, esi_pct: g.esi_pct, pt_amount: g.pt_amount, is_active: g.is_active });
+    setForm({
+      name: g.name,
+      min_salary: g.min_salary,
+      max_salary: g.max_salary !== null ? g.max_salary : '',
+      hra_percent: g.hra_percent,
+      da_percent: g.da_percent,
+      medical_allowance: g.medical_allowance,
+      travel_allowance: g.travel_allowance,
+      pf_percent: g.pf_percent,
+      esi_percent: g.esi_percent,
+      pt_amount: g.pt_amount,
+      is_active: g.is_active
+    });
     setEditId(g.id);
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.group_name.trim()) { toast.error('Group name required'); return; }
+    if (!form.name.trim()) { toast.error('Group name required'); return; }
+    if (form.min_salary === '') { toast.error('Minimum salary required'); return; }
     setSaving(true);
+    
+    // Prepare payload (convert empty string max_salary to null)
+    const payload = {
+      ...form,
+      max_salary: form.max_salary === '' ? null : form.max_salary,
+    };
+
     try {
-      if (editId) { await salaryRulesAPI.update(editId, form); toast.success('Rule updated!'); }
-      else { await salaryRulesAPI.create(form); toast.success('Rule created!'); }
+      if (editId) { await salaryRulesAPI.update(editId, payload); toast.success('Rule updated!'); }
+      else { await salaryRulesAPI.create(payload); toast.success('Rule created!'); }
       setDialogOpen(false);
       fetchGroups();
     } catch (err) { toast.error(err.response?.data?.detail || 'Save failed'); }
@@ -78,6 +98,7 @@ export default function AdminSalaryRules() {
             <TableHead>
               <TableRow sx={{ '& th': { borderBottom: '1px solid rgba(255,255,255,0.08)', fontWeight: 700, color: 'text.secondary', fontSize: 12, textTransform: 'uppercase' } }}>
                 <TableCell>Group Name</TableCell>
+                <TableCell align="right">Salary Range</TableCell>
                 <TableCell align="right">HRA %</TableCell>
                 <TableCell align="right">DA %</TableCell>
                 <TableCell align="right">PF %</TableCell>
@@ -89,17 +110,22 @@ export default function AdminSalaryRules() {
             </TableHead>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>Loading...</TableCell></TableRow>
               ) : groups.length === 0 ? (
-                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>No salary rules configured yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>No salary rules configured yet</TableCell></TableRow>
               ) : (
                 groups.map((g) => (
                   <TableRow key={g.id} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
-                    <TableCell><Typography variant="body2" fontWeight={600}>{g.group_name}</Typography></TableCell>
-                    <TableCell align="right"><Typography variant="body2">{g.hra_pct}%</Typography></TableCell>
-                    <TableCell align="right"><Typography variant="body2">{g.da_pct}%</Typography></TableCell>
-                    <TableCell align="right"><Typography variant="body2">{g.pf_pct}%</Typography></TableCell>
-                    <TableCell align="right"><Typography variant="body2">{g.esi_pct}%</Typography></TableCell>
+                    <TableCell><Typography variant="body2" fontWeight={600}>{g.name}</Typography></TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontWeight={500}>
+                        ₹{parseFloat(g.min_salary).toLocaleString('en-IN')} - {g.max_salary ? `₹${parseFloat(g.max_salary).toLocaleString('en-IN')}` : 'Above'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right"><Typography variant="body2">{g.hra_percent}%</Typography></TableCell>
+                    <TableCell align="right"><Typography variant="body2">{g.da_percent}%</Typography></TableCell>
+                    <TableCell align="right"><Typography variant="body2">{g.pf_percent}%</Typography></TableCell>
+                    <TableCell align="right"><Typography variant="body2">{g.esi_percent}%</Typography></TableCell>
                     <TableCell align="right"><Typography variant="body2">₹{g.pt_amount}</Typography></TableCell>
                     <TableCell align="center">
                       <Chip label={g.is_active ? 'Active' : 'Inactive'} size="small"
@@ -125,19 +151,33 @@ export default function AdminSalaryRules() {
           <IconButton onClick={() => setDialogOpen(false)} size="small"><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
-          <TextField id="rule-name" label="Group Name" fullWidth required value={form.group_name}
-            onChange={(e) => set('group_name', e.target.value)} inputProps={{ maxLength: 100 }} sx={{ mb: 2, mt: 1 }} />
+          <TextField id="rule-name" label="Group Name" fullWidth required value={form.name}
+            onChange={(e) => set('name', e.target.value)} inputProps={{ maxLength: 10 }} sx={{ mb: 2, mt: 1 }} />
+          
+          <Typography variant="overline" color="text.secondary">Salary Range</Typography>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid item xs={6}>
+              <TextField label="Min Salary (₹)" type="number" fullWidth required value={form.min_salary}
+                onChange={(e) => set('min_salary', e.target.value)} inputProps={{ min: 0 }} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField label="Max Salary (₹)" type="number" fullWidth value={form.max_salary}
+                onChange={(e) => set('max_salary', e.target.value)} inputProps={{ min: 0 }} helperText="Leave empty for no limit (Above)" />
+            </Grid>
+          </Grid>
+
           <Typography variant="overline" color="text.secondary">Allowances</Typography>
           <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={6}><TextField label="HRA %" type="number" fullWidth value={form.hra_pct} onChange={(e) => set('hra_pct', e.target.value)} inputProps={{ min: 0, max: 100, step: 1 }} /></Grid>
-            <Grid item xs={6}><TextField label="DA %" type="number" fullWidth value={form.da_pct} onChange={(e) => set('da_pct', e.target.value)} inputProps={{ min: 0, max: 100, step: 1 }} /></Grid>
-            <Grid item xs={6}><TextField label="Medical %" type="number" fullWidth value={form.medical_pct} onChange={(e) => set('medical_pct', e.target.value)} inputProps={{ min: 0, max: 100, step: 1 }} /></Grid>
-            <Grid item xs={6}><TextField label="Travel %" type="number" fullWidth value={form.travel_pct} onChange={(e) => set('travel_pct', e.target.value)} inputProps={{ min: 0, max: 100, step: 1 }} /></Grid>
+            <Grid item xs={6}><TextField label="HRA %" type="number" fullWidth value={form.hra_percent} onChange={(e) => set('hra_percent', e.target.value)} inputProps={{ min: 0, max: 100, step: 1 }} /></Grid>
+            <Grid item xs={6}><TextField label="DA %" type="number" fullWidth value={form.da_percent} onChange={(e) => set('da_percent', e.target.value)} inputProps={{ min: 0, max: 100, step: 1 }} /></Grid>
+            <Grid item xs={6}><TextField label="Medical Allowance (₹)" type="number" fullWidth value={form.medical_allowance} onChange={(e) => set('medical_allowance', e.target.value)} inputProps={{ min: 0 }} /></Grid>
+            <Grid item xs={6}><TextField label="Travel Allowance (₹)" type="number" fullWidth value={form.travel_allowance} onChange={(e) => set('travel_allowance', e.target.value)} inputProps={{ min: 0 }} /></Grid>
           </Grid>
+
           <Typography variant="overline" color="text.secondary">Deductions</Typography>
           <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={4}><TextField label="PF %" type="number" fullWidth value={form.pf_pct} onChange={(e) => set('pf_pct', e.target.value)} inputProps={{ min: 0, max: 20, step: 0.5 }} /></Grid>
-            <Grid item xs={4}><TextField label="ESI %" type="number" fullWidth value={form.esi_pct} onChange={(e) => set('esi_pct', e.target.value)} inputProps={{ min: 0, max: 5, step: 0.25 }} /></Grid>
+            <Grid item xs={4}><TextField label="PF %" type="number" fullWidth value={form.pf_percent} onChange={(e) => set('pf_percent', e.target.value)} inputProps={{ min: 0, max: 20, step: 0.5 }} /></Grid>
+            <Grid item xs={4}><TextField label="ESI %" type="number" fullWidth value={form.esi_percent} onChange={(e) => set('esi_percent', e.target.value)} inputProps={{ min: 0, max: 5, step: 0.25 }} /></Grid>
             <Grid item xs={4}><TextField label="PT ₹" type="number" fullWidth value={form.pt_amount} onChange={(e) => set('pt_amount', e.target.value)} inputProps={{ min: 0, max: 2500, step: 50 }} /></Grid>
           </Grid>
           <FormControlLabel control={<Switch checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} color="primary" />} label="Active" />

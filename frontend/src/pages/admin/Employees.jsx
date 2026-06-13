@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import {
   Add, Person, Search, Refresh, Visibility, Close,
-  CheckCircle, Block, QrCode2
+  CheckCircle, Block, QrCode2, Edit
 } from '@mui/icons-material';
 import Layout from '../../components/Layout';
 import { employeeAPI, departmentAPI } from '../../services/api';
@@ -30,6 +30,7 @@ export default function AdminEmployees() {
   const [viewDialog, setViewDialog] = useState({ open: false, emp: null });
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
+  const [editId, setEditId] = useState(null);
   const [toggling, setToggling] = useState(null); // emp id being toggled
   const [generatingQR, setGeneratingQR] = useState(null); // emp id QR being generated
   const [viewLoading, setViewLoading] = useState(null); // emp id detail loading
@@ -52,22 +53,61 @@ export default function AdminEmployees() {
 
   useEffect(() => { fetchAll(); }, [search]);
 
-  const handleCreate = async () => {
-    const required = ['email', 'first_name', 'last_name', 'password', 'department_id', 'designation', 'mobile', 'joining_date', 'basic_salary'];
+  const openEdit = async (emp) => {
+    setViewLoading(emp.id);
+    try {
+      const res = await employeeAPI.get(emp.id);
+      const detail = res.data;
+      setForm({
+        email: detail.user?.email || '',
+        first_name: detail.user?.first_name || '',
+        last_name: detail.user?.last_name || '',
+        password: '', // blank initially, if left blank it won't update
+        department_id: detail.department?.id || '',
+        designation: detail.designation || '',
+        mobile: detail.mobile || '',
+        joining_date: detail.joining_date || '',
+        basic_salary: detail.basic_salary || '',
+      });
+      setEditId(emp.id);
+      setDialogOpen(true);
+    } catch {
+      toast.error('Failed to load employee details for editing');
+    } finally {
+      setViewLoading(null);
+    }
+  };
+
+  const handleSave = async () => {
+    const required = ['email', 'first_name', 'last_name', 'department_id', 'designation', 'mobile', 'joining_date', 'basic_salary'];
     if (required.some(f => !form[f])) {
-      toast.error('All fields are required');
+      toast.error('All fields except password are required');
+      return;
+    }
+    if (!editId && !form.password) {
+      toast.error('Password is required for new employees');
       return;
     }
     setSaving(true);
     try {
-      await employeeAPI.create(form);
-      toast.success('Employee created successfully!');
+      if (editId) {
+        const payload = { ...form };
+        if (!payload.password) {
+          delete payload.password;
+        }
+        await employeeAPI.update(editId, payload);
+        toast.success('Employee updated successfully!');
+      } else {
+        await employeeAPI.create(form);
+        toast.success('Employee created successfully!');
+      }
       setDialogOpen(false);
       setForm(defaultForm);
+      setEditId(null);
       fetchAll();
     } catch (err) {
       const data = err.response?.data;
-      const msg = data?.email?.[0] || data?.password?.[0] || data?.detail || 'Create failed';
+      const msg = data?.email?.[0] || data?.password?.[0] || data?.detail || 'Operation failed';
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -152,7 +192,7 @@ export default function AdminEmployees() {
           <Button
             id="add-employee-btn"
             variant="contained" startIcon={<Add />}
-            onClick={() => { setForm(defaultForm); setDialogOpen(true); }}
+            onClick={() => { setForm(defaultForm); setEditId(null); setDialogOpen(true); }}
             sx={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 15px rgba(99,102,241,0.4)', '&:hover': { background: 'linear-gradient(135deg, #818cf8, #6366f1)' } }}
           >
             Add Employee
@@ -178,7 +218,7 @@ export default function AdminEmployees() {
                 <TableCell align="right">Basic Salary</TableCell>
                 <TableCell align="center">Status</TableCell>
                 <TableCell align="center">Enable / Disable</TableCell>
-                <TableCell align="center">Details</TableCell>
+                <TableCell align="center">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -242,19 +282,34 @@ export default function AdminEmployees() {
                         </Tooltip>
                       </TableCell>
                       <TableCell align="center">
-                        <Tooltip title="View Details">
-                          <IconButton
-                            id={`view-emp-${emp.id}`}
-                            size="small"
-                            onClick={() => handleViewEmployee(emp)}
-                            disabled={viewLoading === emp.id}
-                            sx={{ color: 'primary.main' }}
-                          >
-                            {viewLoading === emp.id
-                              ? <CircularProgress size={16} />
-                              : <Visibility fontSize="small" />}
-                          </IconButton>
-                        </Tooltip>
+                        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
+                          <Tooltip title="View Details">
+                            <IconButton
+                              id={`view-emp-${emp.id}`}
+                              size="small"
+                              onClick={() => handleViewEmployee(emp)}
+                              disabled={viewLoading === emp.id}
+                              sx={{ color: 'primary.main' }}
+                            >
+                              {viewLoading === emp.id && viewDialog.open === false
+                                ? <CircularProgress size={16} />
+                                : <Visibility fontSize="small" />}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Edit Employee">
+                            <IconButton
+                              id={`edit-emp-${emp.id}`}
+                              size="small"
+                              onClick={() => openEdit(emp)}
+                              disabled={viewLoading === emp.id}
+                              sx={{ color: 'secondary.main' }}
+                            >
+                              {viewLoading === emp.id && dialogOpen === true
+                                ? <CircularProgress size={16} />
+                                : <Edit fontSize="small" />}
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   );
@@ -269,7 +324,7 @@ export default function AdminEmployees() {
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth
         PaperProps={{ sx: { bgcolor: 'background.paper', borderRadius: 3, border: '1px solid rgba(255,255,255,0.08)' } }}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography fontWeight={700}>Create New Employee</Typography>
+          <Typography fontWeight={700}>{editId ? 'Edit Employee' : 'Create New Employee'}</Typography>
           <IconButton onClick={() => setDialogOpen(false)} size="small"><Close /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
@@ -291,9 +346,9 @@ export default function AdminEmployees() {
                 onChange={(e) => setForm({ ...form, email: e.target.value.toLowerCase() })} inputProps={{ maxLength: 254 }} />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField id="emp-password" label="Initial Password" type="password" fullWidth required value={form.password}
+              <TextField id="emp-password" label={editId ? "New Password" : "Initial Password"} type="password" fullWidth required={!editId} value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })} inputProps={{ maxLength: 128 }}
-                helperText="Min 8 characters" />
+                helperText={editId ? "Min 8 characters (leave blank to keep current)" : "Min 8 characters"} />
             </Grid>
           </Grid>
 
@@ -331,9 +386,9 @@ export default function AdminEmployees() {
         </DialogContent>
         <DialogActions sx={{ p: 2.5, pt: 1 }}>
           <Button onClick={() => setDialogOpen(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
-          <Button id="create-employee-btn" variant="contained" onClick={handleCreate} disabled={saving}
+          <Button id="create-employee-btn" variant="contained" onClick={handleSave} disabled={saving}
             sx={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
-            {saving ? 'Creating...' : 'Create Employee'}
+            {saving ? (editId ? 'Saving...' : 'Creating...') : (editId ? 'Save Changes' : 'Create Employee')}
           </Button>
         </DialogActions>
       </Dialog>

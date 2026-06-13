@@ -18,11 +18,17 @@ export const AuthProvider = ({ children }) => {
       const refreshToken = sessionStorage.getItem('refresh_token');
       if (refreshToken) {
         try {
-          // Attempt silent token refresh via api interceptor will handle this
+          // Call the refresh endpoint directly first to set the access token in memory
+          const refreshRes = await authAPI.refresh(refreshToken);
+          const newAccess = refreshRes.data.access;
+          setAccessToken(newAccess);
+
+          // Now fetch the profile with the token set
           const res = await authAPI.profile();
           setUser(res.data);
         } catch {
           // Session expired
+          clearAccessToken();
           sessionStorage.removeItem('refresh_token');
         }
       }
