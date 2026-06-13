@@ -12,9 +12,7 @@ services:
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: payroll-mysql
-          property: connectionString
+        sync: false
       - key: ALLOWED_HOSTS
         value: payroll-backend.onrender.com
       - key: CORS_ALLOWED_ORIGINS
