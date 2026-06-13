@@ -36,8 +36,10 @@ def generate_payslip_pdf(payroll) -> str:
     filepath = payslip_dir / filename
 
     employee = payroll.employee
-    company_name = settings.COMPANY_NAME
-    company_address = settings.COMPANY_ADDRESS
+    from settings_app.models import CompanySettings
+    company_settings = CompanySettings.get_settings()
+    company_name = company_settings.company_name
+    company_address = company_settings.company_address
 
     doc = SimpleDocTemplate(
         str(filepath),

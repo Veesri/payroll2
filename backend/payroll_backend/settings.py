@@ -251,11 +251,6 @@ EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='Payroll System <noreply@example.com>')
 
-# ==================================================
-# COMPANY SETTINGS
-# ==================================================
-COMPANY_NAME = config('COMPANY_NAME', default='Your Company')
-COMPANY_ADDRESS = config('COMPANY_ADDRESS', default='Your Address')
 
 # Frontend URL — used in email links, password resets, etc.
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')

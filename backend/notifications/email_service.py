@@ -22,6 +22,9 @@ def send_payslip_email(employee, payslip):
         logger.error(f"Payslip PDF not found for payslip {payslip.payslip_number}")
         return False
 
+    from settings_app.models import CompanySettings
+    company_settings = CompanySettings.get_settings()
+    
     try:
         subject = f"Your Payslip - {payslip.payroll.month:02d}/{payslip.payroll.year}"
         body = (
@@ -31,7 +34,7 @@ def send_payslip_email(employee, payslip):
             f"Payslip Number: {payslip.payslip_number}\n"
             f"Net Salary: ₹{payslip.payroll.net_salary:,.2f}\n\n"
             f"This is a system-generated email. Do not reply.\n\n"
-            f"Regards,\n{settings.COMPANY_NAME}"
+            f"Regards,\n{company_settings.company_name}"
         )
 
         email = EmailMessage(
