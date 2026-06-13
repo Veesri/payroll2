@@ -44,11 +44,32 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
 
     def get_qr_code_url(self, obj):
         try:
-            if obj.qr_code and obj.qr_code.qr_image:
-                request = self.context.get('request')
-                if request:
-                    return request.build_absolute_uri(obj.qr_code.qr_image.url)
-                return obj.qr_code.qr_image.url
+            qr_record = getattr(obj, 'qr_code', None)
+            if qr_record:
+                import qrcode
+                import base64
+                from io import BytesIO
+                import json
+                
+                qr_data = {
+                    "employee_id": obj.id,
+                    "employee_code": obj.employee_code,
+                    "uuid": str(qr_record.qr_id)
+                }
+                # Create exact verification string without signature
+                qr_json = json.dumps(qr_data, separators=(',', ':'))
+                qr_data["signature"] = qr_record.signature
+                qr_final_json = json.dumps(qr_data, separators=(',', ':'))
+                
+                qr = qrcode.QRCode(version=1, box_size=10, border=4)
+                qr.add_data(qr_final_json)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
+                
+                buffer = BytesIO()
+                img.save(buffer, format="PNG")
+                img_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                return f"data:image/png;base64,{img_str}"
         except Exception:
             pass
         return None
