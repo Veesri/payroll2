@@ -19,8 +19,16 @@ def send_payslip_email(employee, payslip):
     pdf_path = Path(settings.PAYSLIP_ROOT) / payslip.pdf_filename
 
     if not pdf_path.exists():
-        logger.error(f"Payslip PDF not found for payslip {payslip.payslip_number}")
-        return False
+        logger.warning(f"Payslip PDF not found for payslip {payslip.payslip_number}. Regenerating...")
+        try:
+            from payslips.pdf_engine import generate_payslip_pdf
+            new_filename = generate_payslip_pdf(payslip.payroll)
+            payslip.pdf_filename = new_filename
+            payslip.save(update_fields=['pdf_filename'])
+            pdf_path = Path(settings.PAYSLIP_ROOT) / new_filename
+        except Exception as e:
+            logger.error(f"Failed to regenerate PDF for payslip {payslip.payslip_number}: {e}")
+            return False
 
     from settings_app.models import CompanySettings
     company_settings = CompanySettings.get_settings()
