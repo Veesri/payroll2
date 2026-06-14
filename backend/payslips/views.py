@@ -37,36 +37,57 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdmin])
     def generate(self, request):
-        """Generate payslips for all processed payrolls for a month/year."""
+        """Generate payslips for all processed payrolls for a month/year in the background."""
+        import threading
+        import logging
+
         month = request.data.get('month')
         year = request.data.get('year')
 
-        payrolls = Payroll.objects.filter(
+        # Evaluate the queryset immediately so the thread doesn't rely on a potentially closed connection/transaction
+        payrolls = list(Payroll.objects.filter(
             month=month, year=year,
             status=Payroll.STATUS_PROCESSED,
-        ).exclude(payslip__isnull=False)
+        ).exclude(payslip__isnull=False))
 
-        results = []
-        for payroll in payrolls:
-            try:
-                filename = generate_payslip_pdf(payroll)
-                payslip_number = Payslip.generate_payslip_number(
-                    payroll.employee, payroll.month, payroll.year
-                )
-                payslip = Payslip.objects.create(
-                    payroll=payroll,
-                    payslip_number=payslip_number,
-                    pdf_filename=filename,
-                )
-                results.append({'payslip_number': payslip_number, 'status': 'success'})
-            except Exception:
-                results.append({'employee': payroll.employee.employee_code, 'status': 'failed'})
+        if not payrolls:
+            return Response({'detail': 'No unprocessed payrolls found for this month/year.'}, status=status.HTTP_404_NOT_FOUND)
+
+        def generate_payslips_task(payrolls_list):
+            logger = logging.getLogger(__name__)
+            success_count = 0
+            failed_count = 0
+            for payroll in payrolls_list:
+                try:
+                    filename = generate_payslip_pdf(payroll)
+                    payslip_number = Payslip.generate_payslip_number(
+                        payroll.employee, payroll.month, payroll.year
+                    )
+                    Payslip.objects.create(
+                        payroll=payroll,
+                        payslip_number=payslip_number,
+                        pdf_filename=filename,
+                    )
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to generate payslip for {payroll.employee.employee_code}: {e}")
+                    failed_count += 1
+            
+            logger.info(f"Background Payslip Generation Complete: {success_count} success, {failed_count} failed.")
 
         from audit_logs.models import AuditLog
         AuditLog.log(request.user, AuditLog.ACTION_PAYSLIP,
-                     f"Generated payslips for {month}/{year}", request)
+                     f"Started bulk payslip generation for {month}/{year}", request)
 
-        return Response({'results': results})
+        # Start background thread
+        thread = threading.Thread(target=generate_payslips_task, args=(payrolls,))
+        thread.daemon = True
+        thread.start()
+
+        return Response(
+            {'detail': f'Started payslip generation for {len(payrolls)} employees in the background.'}, 
+            status=status.HTTP_202_ACCEPTED
+        )
 
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
@@ -127,9 +148,27 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdmin])
     def send_bulk_emails(self, request):
-        """Send all payslip emails for a month/year."""
+        """Send all payslip emails for a month/year in the background."""
+        import threading
         from notifications.email_service import send_bulk_payslip_emails
         month = request.data.get('month')
         year = request.data.get('year')
-        result = send_bulk_payslip_emails(month, year)
-        return Response(result)
+
+        from audit_logs.models import AuditLog
+        AuditLog.log(request.user, AuditLog.ACTION_PAYSLIP,
+                     f"Started bulk payslip emails for {month}/{year}", request)
+
+        def email_task(m, y):
+            import logging
+            logger = logging.getLogger(__name__)
+            result = send_bulk_payslip_emails(m, y)
+            logger.info(f"Background Emailing Complete: {result['sent']} sent, {result['failed']} failed.")
+
+        thread = threading.Thread(target=email_task, args=(month, year))
+        thread.daemon = True
+        thread.start()
+
+        return Response(
+            {'detail': f'Bulk emailing started in the background. Check server logs for progress.'},
+            status=status.HTTP_202_ACCEPTED
+        )
