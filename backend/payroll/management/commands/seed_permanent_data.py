@@ -103,7 +103,7 @@ class Command(BaseCommand):
             # 3. Create Salary Rules
             self.stdout.write("Creating salary groups...")
             sg_a = SalaryGroup.objects.create(
-                name='Junior (0 - 20k)', description='Entry Level Employees',
+                name='Group A', description='Entry Level Employees',
                 min_salary=Decimal('0.00'), max_salary=Decimal('20000.00'),
                 hra_percent=Decimal('20.00'), da_percent=Decimal('10.00'),
                 medical_allowance=Decimal('1000.00'), travel_allowance=Decimal('1000.00'),
@@ -111,7 +111,7 @@ class Command(BaseCommand):
                 is_active=True
             )
             sg_b = SalaryGroup.objects.create(
-                name='Mid-Level (20k - 50k)', description='Mid Level Professionals',
+                name='Group B', description='Mid Level Professionals',
                 min_salary=Decimal('20001.00'), max_salary=Decimal('50000.00'),
                 hra_percent=Decimal('30.00'), da_percent=Decimal('15.00'),
                 medical_allowance=Decimal('1500.00'), travel_allowance=Decimal('1500.00'),
@@ -119,7 +119,7 @@ class Command(BaseCommand):
                 is_active=True
             )
             sg_c = SalaryGroup.objects.create(
-                name='Senior (50k+)', description='Management and Senior Roles',
+                name='Group C', description='Management and Senior Roles',
                 min_salary=Decimal('50001.00'), max_salary=Decimal('150000.00'),
                 hra_percent=Decimal('40.00'), da_percent=Decimal('20.00'),
                 medical_allowance=Decimal('2000.00'), travel_allowance=Decimal('2000.00'),
@@ -128,9 +128,9 @@ class Command(BaseCommand):
             )
 
             # 4. Create 50 Employees
-            self.stdout.write("Generating 50 realistic employees...")
+            self.stdout.write("Generating 4 realistic employees...")
             employees = []
-            for i in range(1, 51):
+            for i in range(1, 5):
                 first_name = fake.first_name()
                 last_name = fake.last_name()
                 email = f"{first_name.lower()}.{last_name.lower()}{i}@example.com"
@@ -217,7 +217,7 @@ class Command(BaseCommand):
                         
                         Leave.objects.create(
                             employee=emp,
-                            leave_type=random.choice([Leave.TYPE_SICK, Leave.TYPE_CASUAL, Leave.TYPE_PAID]),
+                            leave_type=random.choice([Leave.TYPE_SICK, Leave.TYPE_CASUAL, Leave.TYPE_EARNED]),
                             from_date=datetime.date(year, month, start_leave),
                             to_date=datetime.date(year, month, start_leave + leave_duration - 1),
                             number_of_days=leave_duration,
@@ -269,4 +269,4 @@ class Command(BaseCommand):
                 for emp in employees:
                     calculate_payroll(emp, month, year)
 
-        self.stdout.write(self.style.SUCCESS("✅ Database seeding completed successfully! 50 Employees and 6 months of data generated."))
+        self.stdout.write(self.style.SUCCESS("✅ Database seeding completed successfully! 4 Employees and 6 months of data generated."))

@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import {
   QrCodeScanner, StopCircle, AccessTime, Logout as LogoutIcon,
-  People, HowToReg, PanTool, Refresh
+  People, HowToReg, PanTool, Refresh, UploadFile
 } from '@mui/icons-material';
 import Layout from '../../components/Layout';
 import { attendanceAPI, dashboardAPI } from '../../services/api';
@@ -40,6 +40,7 @@ export default function AdminScanner() {
   const [stats, setStats] = useState({ total: 0, present: 0, absent: 0 });
   const scannerRef = useRef(null);
   const processingRef = useRef(false);
+  const fileInputRef = useRef(null);
   const ELEMENT_ID = 'qr-reader-camera';
 
   const fetchStats = useCallback(async () => {
@@ -142,6 +143,30 @@ export default function AdminScanner() {
     }
     setScanning(false);
   }, []);
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const { Html5Qrcode } = await import('html5-qrcode');
+      
+      let scanner = scannerRef.current;
+      if (!scanner) {
+        const el = document.getElementById(ELEMENT_ID);
+        if (el) el.innerHTML = '';
+        scanner = new Html5Qrcode(ELEMENT_ID);
+      }
+
+      const decodedText = await scanner.scanFile(file, true);
+      await handleScan(decodedText);
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not find a valid QR code in the uploaded image.');
+    } finally {
+      event.target.value = ''; // Reset input
+    }
+  };
 
   // Cleanup on unmount
   useEffect(() => {
@@ -277,6 +302,15 @@ export default function AdminScanner() {
                     <Typography color="text.secondary" variant="caption">Click Start to activate</Typography>
                   </Box>
                 )}
+                
+                {/* Hidden file input for uploading QR images */}
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  ref={fileInputRef} 
+                  style={{ display: 'none' }} 
+                  onChange={handleFileUpload} 
+                />
               </Box>
 
               {scanning ? (
@@ -285,16 +319,28 @@ export default function AdminScanner() {
                   Stop Scanner
                 </Button>
               ) : (
-                <Button variant="contained" fullWidth startIcon={<QrCodeScanner />}
-                  onClick={startScanning}
-                  sx={{
-                    py: 1.5, fontWeight: 700, borderRadius: 2,
-                    background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                    boxShadow: '0 4px 15px rgba(99,102,241,0.4)',
-                    '&:hover': { background: 'linear-gradient(135deg, #818cf8, #6366f1)' },
-                  }}>
-                  Start Camera
-                </Button>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button variant="contained" fullWidth startIcon={<QrCodeScanner />}
+                    onClick={startScanning}
+                    sx={{
+                      py: 1.5, fontWeight: 700, borderRadius: 2,
+                      background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                      boxShadow: '0 4px 15px rgba(99,102,241,0.4)',
+                      '&:hover': { background: 'linear-gradient(135deg, #818cf8, #6366f1)' },
+                    }}>
+                    Start Camera
+                  </Button>
+                  <Button variant="outlined" fullWidth startIcon={<UploadFile />}
+                    onClick={() => fileInputRef.current?.click()}
+                    sx={{
+                      py: 1.5, fontWeight: 700, borderRadius: 2,
+                      borderColor: 'rgba(255,255,255,0.2)',
+                      color: 'text.primary',
+                      '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(99,102,241,0.05)' }
+                    }}>
+                    Upload Image
+                  </Button>
+                </Box>
               )}
 
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1.5 }}>
