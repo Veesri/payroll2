@@ -5,6 +5,7 @@ import hashlib
 from datetime import datetime
 from django.utils import timezone
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -71,67 +72,142 @@ class QRScanView(APIView):
         today = timezone.localdate()
         now_time = timezone.localtime().time()
 
-        attendance, created = Attendance.objects.get_or_create(
-            employee=employee,
-            attendance_date=today,
-            defaults={'check_in_time': now_time}
-        )
+        scan_type = request.data.get('scan_type', 'auto')
+        from datetime import timedelta
+        attendance = Attendance.objects.filter(employee=employee, attendance_date=today).first()
 
-        if not created:
-            # Check-Out Logic
-            if attendance.check_out_time:
-                AuditLog.log(request.user, "QR_SCAN_REJECT", f"Already checked out: {emp_code}", request)
-                return Response({'detail': 'Attendance Already Completed For Today.'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            attendance.check_out_time = now_time
-            
-            # Calculate hours
-            t1 = datetime.combine(today, attendance.check_in_time)
-            t2 = datetime.combine(today, now_time)
-            diff = t2 - t1
-            hours = diff.total_seconds() / 3600.0
-            attendance.working_hours = hours
-            
-            # Update status based on hours
-            if hours < half_day_hours:
-                attendance.attendance_status = Attendance.STATUS_HALF_DAY
-            elif hours >= min_hours:
-                attendance.attendance_status = Attendance.STATUS_PRESENT
-            else:
-                # between half day and full day, usually half day
-                attendance.attendance_status = Attendance.STATUS_HALF_DAY
+        if scan_type == 'check_in':
+            if attendance:
+                attendance.check_in_time = now_time
+                late_threshold = datetime.combine(today, office_start) + timedelta(minutes=grace)
+                current_dt = datetime.combine(today, now_time)
+                if current_dt > late_threshold:
+                    attendance.attendance_status = Attendance.STATUS_LATE
+                else:
+                    attendance.attendance_status = Attendance.STATUS_PRESENT
                 
-            attendance.save()
-            
-            AuditLog.log(request.user, "QR_CHECK_OUT", f"Check-Out {emp_code} at {now_time}", request)
+                if attendance.check_out_time:
+                    t1 = datetime.combine(today, now_time)
+                    t2 = datetime.combine(today, attendance.check_out_time)
+                    diff = t2 - t1
+                    hours = max(0.0, diff.total_seconds() / 3600.0)
+                    attendance.working_hours = hours
+                    if hours < half_day_hours:
+                        attendance.attendance_status = Attendance.STATUS_HALF_DAY
+                attendance.save()
+            else:
+                attendance = Attendance.objects.create(
+                    employee=employee,
+                    attendance_date=today,
+                    check_in_time=now_time
+                )
+                late_threshold = datetime.combine(today, office_start) + timedelta(minutes=grace)
+                current_dt = datetime.combine(today, now_time)
+                if current_dt > late_threshold:
+                    attendance.attendance_status = Attendance.STATUS_LATE
+                else:
+                    attendance.attendance_status = Attendance.STATUS_PRESENT
+                attendance.save()
+
+            AuditLog.log(request.user, "QR_CHECK_IN", f"Check-In {emp_code} at {now_time} (Manual)", request)
+            return Response({
+                'detail': 'Check-In Recorded Successfully.',
+                'employee_name': employee.user.full_name,
+                'employee_code': employee.employee_code,
+                'in_time': str(now_time)
+            })
+
+        elif scan_type == 'check_out':
+            if not attendance:
+                attendance = Attendance.objects.create(
+                    employee=employee,
+                    attendance_date=today,
+                    check_out_time=now_time,
+                    working_hours=0.00,
+                    attendance_status=Attendance.STATUS_HALF_DAY
+                )
+            else:
+                attendance.check_out_time = now_time
+                if attendance.check_in_time:
+                    t1 = datetime.combine(today, attendance.check_in_time)
+                    t2 = datetime.combine(today, now_time)
+                    diff = t2 - t1
+                    hours = max(0.0, diff.total_seconds() / 3600.0)
+                    attendance.working_hours = hours
+                    
+                    if hours < half_day_hours:
+                        attendance.attendance_status = Attendance.STATUS_HALF_DAY
+                    elif hours >= min_hours:
+                        if attendance.attendance_status != Attendance.STATUS_LATE:
+                            attendance.attendance_status = Attendance.STATUS_PRESENT
+                    else:
+                        attendance.attendance_status = Attendance.STATUS_HALF_DAY
+                else:
+                    attendance.working_hours = 0.00
+                    attendance.attendance_status = Attendance.STATUS_HALF_DAY
+                attendance.save()
+
+            AuditLog.log(request.user, "QR_CHECK_OUT", f"Check-Out {emp_code} at {now_time} (Manual)", request)
             return Response({
                 'detail': 'Checkout Recorded Successfully.',
                 'employee_name': employee.user.full_name,
                 'employee_code': employee.employee_code,
                 'out_time': str(now_time),
-                'working_hours': f"{hours:.2f}"
+                'working_hours': f"{float(attendance.working_hours):.2f}"
             })
 
-        # New Check-In Logic
-        # Check if late
-        late_threshold = datetime.combine(today, office_start)
-        from datetime import timedelta
-        late_threshold += timedelta(minutes=grace)
-        current_dt = datetime.combine(today, now_time)
-
-        if current_dt > late_threshold:
-            attendance.attendance_status = Attendance.STATUS_LATE
         else:
-            attendance.attendance_status = Attendance.STATUS_PRESENT
-        attendance.save()
+            # auto mode
+            if not attendance:
+                attendance = Attendance.objects.create(
+                    employee=employee,
+                    attendance_date=today,
+                    check_in_time=now_time
+                )
+                late_threshold = datetime.combine(today, office_start) + timedelta(minutes=grace)
+                current_dt = datetime.combine(today, now_time)
+                if current_dt > late_threshold:
+                    attendance.attendance_status = Attendance.STATUS_LATE
+                else:
+                    attendance.attendance_status = Attendance.STATUS_PRESENT
+                attendance.save()
 
-        AuditLog.log(request.user, "QR_CHECK_IN", f"Check-In {emp_code} at {now_time}", request)
-        return Response({
-            'detail': 'Attendance Recorded Successfully.',
-            'employee_name': employee.user.full_name,
-            'employee_code': employee.employee_code,
-            'in_time': str(now_time)
-        })
+                AuditLog.log(request.user, "QR_CHECK_IN", f"Check-In {emp_code} at {now_time}", request)
+                return Response({
+                    'detail': 'Attendance Recorded Successfully.',
+                    'employee_name': employee.user.full_name,
+                    'employee_code': employee.employee_code,
+                    'in_time': str(now_time)
+                })
+            else:
+                if attendance.check_out_time:
+                    AuditLog.log(request.user, "QR_SCAN_REJECT", f"Already checked out: {emp_code}", request)
+                    return Response({'detail': 'Attendance Already Completed For Today.'}, status=status.HTTP_400_BAD_REQUEST)
+                
+                attendance.check_out_time = now_time
+                t1 = datetime.combine(today, attendance.check_in_time)
+                t2 = datetime.combine(today, now_time)
+                diff = t2 - t1
+                hours = max(0.0, diff.total_seconds() / 3600.0)
+                attendance.working_hours = hours
+                
+                if hours < half_day_hours:
+                    attendance.attendance_status = Attendance.STATUS_HALF_DAY
+                elif hours >= min_hours:
+                    if attendance.attendance_status != Attendance.STATUS_LATE:
+                        attendance.attendance_status = Attendance.STATUS_PRESENT
+                else:
+                    attendance.attendance_status = Attendance.STATUS_HALF_DAY
+                attendance.save()
+                
+                AuditLog.log(request.user, "QR_CHECK_OUT", f"Check-Out {emp_code} at {now_time}", request)
+                return Response({
+                    'detail': 'Checkout Recorded Successfully.',
+                    'employee_name': employee.user.full_name,
+                    'employee_code': employee.employee_code,
+                    'out_time': str(now_time),
+                    'working_hours': f"{hours:.2f}"
+                })
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
@@ -159,6 +235,95 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         return AttendanceSerializer
 
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'seed_mock_data']:
             return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
+
+    @action(detail=False, methods=['post'], url_path='seed-mock-data')
+    def seed_mock_data(self, request):
+        from django.utils import timezone
+        import random
+        from datetime import date, timedelta, time
+        from decimal import Decimal
+        from .rule_engine import calculate_working_hours, determine_attendance_status
+        
+        employees = Employee.objects.all()
+        if not employees.exists():
+            return Response({'detail': 'No employees registered yet. Register some employees first.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        today = timezone.localdate()
+        count = 0
+        
+        for emp in employees:
+            for d in range(1, 31):
+                day_date = today - timedelta(days=d)
+                
+                if day_date.weekday() == 6:  # Sunday
+                    continue
+                    
+                if Attendance.objects.filter(employee=emp, attendance_date=day_date).exists():
+                    continue
+                    
+                r = random.random()
+                if r < 0.80:
+                    status_choice = Attendance.STATUS_PRESENT
+                elif r < 0.90:
+                    status_choice = Attendance.STATUS_LATE
+                elif r < 0.95:
+                    status_choice = Attendance.STATUS_HALF_DAY
+                else:
+                    status_choice = Attendance.STATUS_ABSENT
+                    
+                if status_choice == Attendance.STATUS_ABSENT:
+                    Attendance.objects.create(
+                        employee=emp,
+                        attendance_date=day_date,
+                        attendance_status=Attendance.STATUS_ABSENT,
+                        working_hours=Decimal('0.00'),
+                        check_in_time=None,
+                        check_out_time=None
+                    )
+                else:
+                    if status_choice == Attendance.STATUS_PRESENT:
+                        in_hour = 8
+                        in_minute = random.randint(45, 59)
+                        if random.random() > 0.5:
+                            in_hour = 9
+                            in_minute = random.randint(0, 5)
+                        out_hour = 17
+                        out_minute = random.randint(30, 59)
+                        if random.random() > 0.5:
+                            out_hour = 18
+                            out_minute = random.randint(0, 15)
+                    elif status_choice == Attendance.STATUS_LATE:
+                        in_hour = 9
+                        in_minute = random.randint(11, 59)
+                        out_hour = 17
+                        out_minute = random.randint(30, 59)
+                    else: # Half Day
+                        in_hour = 8
+                        in_minute = random.randint(45, 59)
+                        if random.random() > 0.5:
+                            in_hour = 9
+                            in_minute = random.randint(0, 10)
+                        out_hour = 13
+                        out_minute = random.randint(0, 30)
+                        
+                    check_in_t = time(in_hour, in_minute)
+                    check_out_t = time(out_hour, out_minute)
+                    hours = calculate_working_hours(check_in_t, check_out_t)
+                    final_status = determine_attendance_status(check_in_t, hours)
+                    
+                    Attendance.objects.create(
+                        employee=emp,
+                        attendance_date=day_date,
+                        check_in_time=check_in_t,
+                        check_out_time=check_out_t,
+                        working_hours=hours,
+                        attendance_status=final_status,
+                        is_manual=False
+                    )
+                count += 1
+                
+        return Response({'detail': f'Successfully seeded {count} mock attendance records for existing employees.'}, status=status.HTTP_201_CREATED)
+

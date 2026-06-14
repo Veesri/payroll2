@@ -17,6 +17,29 @@ export const AuthProvider = ({ children }) => {
     const restore = async () => {
       const refreshToken = sessionStorage.getItem('refresh_token');
       if (refreshToken) {
+        // Pre-check JWT expiration to avoid a redundant 401 network call
+        let isExpired = false;
+        try {
+          const parts = refreshToken.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+            if (payload.exp && payload.exp * 1000 < Date.now()) {
+              isExpired = true;
+            }
+          } else {
+            isExpired = true;
+          }
+        } catch {
+          isExpired = true;
+        }
+
+        if (isExpired) {
+          clearAccessToken();
+          sessionStorage.removeItem('refresh_token');
+          setLoading(false);
+          return;
+        }
+
         try {
           // Call the refresh endpoint directly first to set the access token in memory
           const refreshRes = await authAPI.refresh(refreshToken);

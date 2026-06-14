@@ -3,7 +3,7 @@ import {
   Box, Card, CardContent, Typography, TextField, Button, Grid,
   Divider, Switch, FormControlLabel, CircularProgress, Alert
 } from '@mui/material';
-import { Save, Business } from '@mui/icons-material';
+import { Save, Business, SupervisorAccount } from '@mui/icons-material';
 import Layout from '../../components/Layout';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -31,6 +31,34 @@ export default function AdminSettings() {
     finally { setSaving(false); }
   };
 
+  const [adminForm, setAdminForm] = useState({
+    email: '', first_name: '', last_name: '', password: ''
+  });
+  const [adminSubmitting, setAdminSubmitting] = useState(false);
+
+  const handleCreateAdmin = async (e) => {
+    e.preventDefault();
+    if (!adminForm.email || !adminForm.first_name || !adminForm.last_name || !adminForm.password) {
+      toast.error('All fields are required');
+      return;
+    }
+    if (adminForm.password.length < 8) {
+      toast.error('Password must be at least 8 characters long');
+      return;
+    }
+    setAdminSubmitting(true);
+    try {
+      await api.post('/auth/add-admin/', adminForm);
+      toast.success('Admin user created successfully!');
+      setAdminForm({ email: '', first_name: '', last_name: '', password: '' });
+    } catch (err) {
+      const detail = err.response?.data?.detail || 'Failed to create admin';
+      toast.error(detail);
+    } finally {
+      setAdminSubmitting(false);
+    }
+  };
+
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   if (loading) return <Layout><Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box></Layout>;
@@ -49,9 +77,9 @@ export default function AdminSettings() {
       </Box>
 
       <Grid container spacing={3}>
-        {/* Company Info */}
+        {/* Company Info & Admin Management */}
         <Grid item xs={12} md={6}>
-          <Card>
+          <Card sx={{ mb: 3 }}>
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
                 <Business sx={{ color: 'primary.main' }} />
@@ -68,6 +96,81 @@ export default function AdminSettings() {
               <TextField id="settings-phone" label="Company Phone" fullWidth
                 value={form.company_phone} onChange={(e) => set('company_phone', e.target.value)}
                 inputProps={{ maxLength: 20 }} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
+                <SupervisorAccount sx={{ color: 'primary.main' }} />
+                <Typography variant="h6" fontWeight={700}>Add New Administrator</Typography>
+              </Box>
+              <form onSubmit={handleCreateAdmin}>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <TextField
+                      label="First Name"
+                      fullWidth
+                      size="small"
+                      value={adminForm.first_name}
+                      onChange={(e) => setAdminForm(f => ({ ...f, first_name: e.target.value }))}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={6}>
+                    <TextField
+                      label="Last Name"
+                      fullWidth
+                      size="small"
+                      value={adminForm.last_name}
+                      onChange={(e) => setAdminForm(f => ({ ...f, last_name: e.target.value }))}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Email Address"
+                      type="email"
+                      fullWidth
+                      size="small"
+                      value={adminForm.email}
+                      onChange={(e) => setAdminForm(f => ({ ...f, email: e.target.value }))}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Password"
+                      type="password"
+                      fullWidth
+                      size="small"
+                      value={adminForm.password}
+                      onChange={(e) => setAdminForm(f => ({ ...f, password: e.target.value }))}
+                      required
+                      helperText="Must be at least 8 characters"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      fullWidth
+                      disabled={adminSubmitting}
+                      sx={{
+                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                        boxShadow: '0 4px 15px rgba(16,185,129,0.3)',
+                        fontWeight: 700,
+                        textTransform: 'none',
+                        '&:hover': {
+                          background: 'linear-gradient(135deg, #34d399, #10b981)'
+                        }
+                      }}
+                    >
+                      {adminSubmitting ? 'Creating...' : 'Create Admin Account'}
+                    </Button>
+                  </Grid>
+                </Grid>
+              </form>
             </CardContent>
           </Card>
         </Grid>

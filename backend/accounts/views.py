@@ -186,3 +186,46 @@ class ChangePasswordView(APIView):
         user.save()
 
         return Response({'detail': 'Password changed successfully. Please log in again.'})
+
+
+from .permissions import IsAdmin
+
+class CreateAdminView(APIView):
+    """
+    POST /api/auth/add-admin/
+    Only admins can call this to create a new admin.
+    """
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        data = request.data
+        email = data.get('email', '').strip().lower()
+        first_name = data.get('first_name', '').strip()
+        last_name = data.get('last_name', '').strip()
+        password = data.get('password', '')
+
+        if not all([email, first_name, last_name, password]):
+            return Response({'detail': 'All fields are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(password) < 8:
+            return Response({'detail': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if User.objects.filter(email=email).exists():
+            return Response({'detail': 'An account with this email already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.create_user(
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+            role=User.ADMIN,
+            is_staff=True,
+            is_superuser=True,
+            is_approved=True
+        )
+
+        return Response(
+            {'detail': f'Admin account {email} created successfully.'},
+            status=status.HTTP_201_CREATED
+        )
+

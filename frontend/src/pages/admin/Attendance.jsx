@@ -2,14 +2,16 @@ import { useState, useEffect } from 'react';
 import {
   Box, Button, Card, Typography, Grid, Chip, Tooltip, IconButton,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  MenuItem, Select, FormControl, InputLabel, Avatar, CircularProgress
+  MenuItem, Select, FormControl, InputLabel, Avatar, CircularProgress,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Checkbox, FormControlLabel
 } from '@mui/material';
 import {
-  Refresh, CheckCircle, Cancel, Schedule, AccessTime, QrCodeScanner, People, HowToReg
+  Refresh, CheckCircle, Cancel, Schedule, AccessTime, QrCodeScanner, People, HowToReg,
+  Edit, Delete, Add, Save
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
-import { attendanceAPI, dashboardAPI } from '../../services/api';
+import { attendanceAPI, dashboardAPI, employeeAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
 const statusColors = {
@@ -30,6 +32,35 @@ export default function AdminAttendance() {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [stats, setStats] = useState({ total: 0, present: 0, absent: 0 });
+
+  // Dialog & Form States
+  const [employees, setEmployees] = useState([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState('add'); // 'add' | 'edit'
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [recordToDelete, setRecordToDelete] = useState(null);
+
+  // Form Fields
+  const [formEmployee, setFormEmployee] = useState('');
+  const [formDate, setFormDate] = useState('');
+  const [formCheckIn, setFormCheckIn] = useState('');
+  const [formCheckOut, setFormCheckOut] = useState('');
+  const [formStatus, setFormStatus] = useState('present');
+  const [formWorkingHours, setFormWorkingHours] = useState('');
+  const [formIsManual, setFormIsManual] = useState(true);
+
+  const fetchEmployees = async () => {
+    try {
+      const res = await employeeAPI.list({ limit: 1000 });
+      setEmployees(res.data.results || res.data);
+    } catch {
+      toast.error('Failed to load employee list');
+    }
+  };
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -53,6 +84,105 @@ export default function AdminAttendance() {
 
   useEffect(() => { fetchRecords(); }, [month, year]);
 
+  const handleSeedMockData = async () => {
+    if (!window.confirm('Are you sure you want to generate 30 days of mock attendance data for all registered employees? (Sundays and existing dates will be skipped)')) {
+      return;
+    }
+    setSeeding(true);
+    try {
+      const res = await attendanceAPI.seedMockData();
+      toast.success(res.data.detail || 'Mock attendance seeded successfully!');
+      fetchRecords();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to seed mock attendance data');
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const handleOpenAdd = () => {
+    fetchEmployees();
+    setDialogMode('add');
+    setSelectedRecord(null);
+    setFormEmployee('');
+    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormCheckIn('');
+    setFormCheckOut('');
+    setFormStatus('present');
+    setFormWorkingHours('');
+    setFormIsManual(true);
+    setDialogOpen(true);
+  };
+
+  const handleOpenEdit = (rec) => {
+    fetchEmployees();
+    setDialogMode('edit');
+    setSelectedRecord(rec);
+    setFormEmployee(rec.employee || '');
+    setFormDate(rec.attendance_date || '');
+    setFormCheckIn(rec.check_in_time ? rec.check_in_time.substring(0, 5) : '');
+    setFormCheckOut(rec.check_out_time ? rec.check_out_time.substring(0, 5) : '');
+    setFormStatus(rec.attendance_status || 'present');
+    setFormWorkingHours(rec.working_hours || '');
+    setFormIsManual(rec.is_manual !== false);
+    setDialogOpen(true);
+  };
+
+  const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    if (!formEmployee || !formDate) {
+      toast.error('Employee and Date are required');
+      return;
+    }
+    setSubmitting(true);
+    const payload = {
+      employee: formEmployee,
+      attendance_date: formDate,
+      check_in_time: formCheckIn || null,
+      check_out_time: formCheckOut || null,
+      attendance_status: formStatus,
+      working_hours: formWorkingHours !== '' ? parseFloat(formWorkingHours) : null,
+      is_manual: formIsManual,
+    };
+    try {
+      if (dialogMode === 'add') {
+        await attendanceAPI.create(payload);
+        toast.success('Attendance record created');
+      } else {
+        await attendanceAPI.update(selectedRecord.id, payload);
+        toast.success('Attendance record updated');
+      }
+      setDialogOpen(false);
+      fetchRecords();
+    } catch (err) {
+      const errDetail = err.response?.data?.detail || Object.values(err.response?.data || {}).flat()[0] || 'Operation failed';
+      toast.error(errDetail);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOpenDelete = (rec) => {
+    setRecordToDelete(rec);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!recordToDelete) return;
+    setSubmitting(true);
+    try {
+      await attendanceAPI.delete(recordToDelete.id);
+      toast.success('Attendance record deleted');
+      setDeleteDialogOpen(false);
+      setRecordToDelete(null);
+      fetchRecords();
+    } catch {
+      toast.error('Failed to delete attendance record');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
@@ -73,18 +203,51 @@ export default function AdminAttendance() {
           <Typography variant="h4" fontWeight={800}>Attendance</Typography>
           <Typography variant="body2" color="text.secondary">Track daily attendance with permanent employee QR codes</Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Tooltip title="Refresh">
             <IconButton onClick={fetchRecords} sx={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 }}>
               <Refresh />
             </IconButton>
           </Tooltip>
           <Button
+            variant="outlined"
+            onClick={handleSeedMockData}
+            disabled={seeding}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 700,
+              borderColor: 'rgba(255,255,255,0.1)',
+              color: 'text.primary',
+              '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(99,102,241,0.05)' }
+            }}
+          >
+            {seeding ? <CircularProgress size={20} color="inherit" /> : 'Seed Mock Data'}
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<Add />}
+            onClick={handleOpenAdd}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 700,
+              borderColor: 'rgba(99,102,241,0.4)',
+              color: 'primary.light',
+              '&:hover': { bgcolor: 'rgba(99,102,241,0.08)' }
+            }}
+          >
+            Add Record
+          </Button>
+          <Button
             id="go-to-scanner-btn"
             variant="contained"
             startIcon={<QrCodeScanner />}
             onClick={() => navigate('/admin/scanner')}
             sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 700,
               background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
               boxShadow: '0 4px 15px rgba(99,102,241,0.4)',
               '&:hover': { background: 'linear-gradient(135deg, #818cf8, #6366f1)' },
@@ -159,18 +322,19 @@ export default function AdminAttendance() {
                 <TableCell align="center">Check Out</TableCell>
                 <TableCell align="center">Hours</TableCell>
                 <TableCell align="center">Status</TableCell>
+                <TableCell align="center">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                     <CircularProgress size={32} />
                   </TableCell>
                 </TableRow>
               ) : records.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
                     <QrCodeScanner sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.3, mb: 1, display: 'block', mx: 'auto' }} />
                     <Typography color="text.secondary">No attendance records for {months[month - 1]} {year}</Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -224,6 +388,20 @@ export default function AdminAttendance() {
                         }}
                       />
                     </TableCell>
+                    <TableCell align="center">
+                      <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                        <Tooltip title="Edit Record">
+                          <IconButton size="small" onClick={() => handleOpenEdit(rec)} sx={{ color: 'primary.light', '&:hover': { bgcolor: 'rgba(99,102,241,0.1)' } }}>
+                            <Edit sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Record">
+                          <IconButton size="small" onClick={() => handleOpenDelete(rec)} sx={{ color: 'error.main', '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }}>
+                            <Delete sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -231,6 +409,157 @@ export default function AdminAttendance() {
           </Table>
         </TableContainer>
       </Card>
+
+      {/* Add / Edit Attendance Dialog */}
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>
+          {dialogMode === 'add' ? 'Add Manual Attendance' : 'Edit Attendance Record'}
+        </DialogTitle>
+        <form onSubmit={handleFormSubmit}>
+          <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+            {dialogMode === 'add' ? (
+              <FormControl fullWidth required size="small">
+                <InputLabel>Employee</InputLabel>
+                <Select
+                  value={formEmployee}
+                  label="Employee"
+                  onChange={(e) => setFormEmployee(e.target.value)}
+                >
+                  {employees.map((emp) => (
+                    <MenuItem key={emp.id} value={emp.id}>
+                      {emp.employee_code} - {emp.user?.full_name || emp.full_name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <TextField
+                label="Employee"
+                value={selectedRecord ? `${selectedRecord.employee_code} - ${selectedRecord.employee_name}` : ''}
+                disabled
+                size="small"
+                fullWidth
+              />
+            )}
+
+            <TextField
+              label="Date"
+              type="date"
+              value={formDate}
+              onChange={(e) => setFormDate(e.target.value)}
+              required
+              size="small"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField
+                  label="Check In Time"
+                  type="time"
+                  value={formCheckIn}
+                  onChange={(e) => setFormCheckIn(e.target.value)}
+                  size="small"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ step: 300 }} // 5 min interval
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="Check Out Time"
+                  type="time"
+                  value={formCheckOut}
+                  onChange={(e) => setFormCheckOut(e.target.value)}
+                  size="small"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ step: 300 }}
+                />
+              </Grid>
+            </Grid>
+
+            <FormControl fullWidth required size="small">
+              <InputLabel>Attendance Status</InputLabel>
+              <Select
+                value={formStatus}
+                label="Attendance Status"
+                onChange={(e) => setFormStatus(e.target.value)}
+              >
+                <MenuItem value="present">Present</MenuItem>
+                <MenuItem value="late">Late</MenuItem>
+                <MenuItem value="half_day">Half Day</MenuItem>
+                <MenuItem value="absent">Absent</MenuItem>
+                <MenuItem value="holiday">Holiday</MenuItem>
+                <MenuItem value="leave">On Leave</MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              label="Working Hours (Manual Override)"
+              type="number"
+              value={formWorkingHours}
+              onChange={(e) => setFormWorkingHours(e.target.value)}
+              placeholder="Leave blank to auto-calculate"
+              size="small"
+              fullWidth
+              inputProps={{ step: 0.1, min: 0, max: 24 }}
+            />
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formIsManual}
+                  onChange={(e) => setFormIsManual(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label="Mark as Manual Adjustment"
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setDialogOpen(false)} variant="outlined" color="inherit">
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={submitting}
+              startIcon={<Save />}
+              sx={{
+                background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                '&:hover': { background: 'linear-gradient(135deg, #818cf8, #6366f1)' },
+              }}
+            >
+              {submitting ? 'Saving...' : 'Save Record'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle sx={{ fontWeight: 800 }}>Confirm Deletion</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Are you sure you want to delete the attendance record of{' '}
+            <strong>{recordToDelete?.employee_name}</strong> for{' '}
+            <strong>{recordToDelete?.attendance_date}</strong>?
+          </Typography>
+          <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1, fontWeight: 700 }}>
+            ⚠️ This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteDialogOpen(false)} variant="outlined" color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} variant="contained" color="error" disabled={submitting}>
+            {submitting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Layout>
   );
 }

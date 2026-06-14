@@ -34,6 +34,7 @@ function CameraContainer({ elementId }) {
 
 export default function AdminScanner() {
   const [scanning, setScanning] = useState(false);
+  const [scanMode, setScanMode] = useState('auto'); // 'auto', 'check_in', 'check_out'
   const [recentScans, setRecentScans] = useState([]);
   const [lastScan, setLastScan] = useState(null);
   const [stats, setStats] = useState({ total: 0, present: 0, absent: 0 });
@@ -59,7 +60,7 @@ export default function AdminScanner() {
     processingRef.current = true;
 
     try {
-      const res = await attendanceAPI.scan(decodedText);
+      const res = await attendanceAPI.scan(decodedText, scanMode);
       const data = res.data;
       const isCheckIn = !!data.in_time;
       const scanRecord = {
@@ -93,7 +94,7 @@ export default function AdminScanner() {
     }
 
     setTimeout(() => { processingRef.current = false; }, 3000);
-  }, [fetchStats]);
+  }, [fetchStats, scanMode]);
 
   const startScanning = useCallback(async () => {
     try {
@@ -203,6 +204,48 @@ export default function AdminScanner() {
               <Typography variant="h6" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <QrCodeScanner sx={{ color: 'primary.main' }} /> Camera Scanner
               </Typography>
+
+              {/* Scan Mode Selector */}
+              <Box sx={{ mb: 2.5 }}>
+                <Typography variant="subtitle2" fontWeight={700} color="text.secondary" mb={1} sx={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Scanner Option Mode
+                </Typography>
+                <Grid container spacing={1}>
+                  {[
+                    { mode: 'auto', label: 'Auto Detect', desc: 'In/Out automatic', color: '#6366f1' },
+                    { mode: 'check_in', label: 'Check In', desc: 'Force Check-In', color: '#10b981' },
+                    { mode: 'check_out', label: 'Check Out', desc: 'Force Check-Out', color: '#f97316' }
+                  ].map((m) => (
+                    <Grid item xs={4} key={m.mode}>
+                      <Card
+                        onClick={() => setScanMode(m.mode)}
+                        sx={{
+                          cursor: 'pointer',
+                          textAlign: 'center',
+                          p: 1.2,
+                          border: `2px solid ${scanMode === m.mode ? m.color : 'rgba(255,255,255,0.06)'}`,
+                          bgcolor: scanMode === m.mode ? `${m.color}15` : 'background.paper',
+                          backgroundImage: 'none',
+                          transition: 'all 0.2s ease-in-out',
+                          transform: scanMode === m.mode ? 'translateY(-2px)' : 'none',
+                          boxShadow: scanMode === m.mode ? `0 4px 10px ${m.color}20` : 'none',
+                          '&:hover': {
+                            borderColor: m.color,
+                            bgcolor: `${m.color}08`,
+                          }
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight={700} sx={{ color: scanMode === m.mode ? m.color : 'text.primary', fontSize: 11 }}>
+                          {m.label}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: 8 }}>
+                          {m.desc}
+                        </Typography>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
 
               {/* Camera viewport — ALWAYS mounted, never removed by React */}
               <Box sx={{

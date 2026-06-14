@@ -23,8 +23,17 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         qs = Payslip.objects.select_related('payroll__employee__user')
         if user.role == 'admin':
-            return qs.all()
-        return qs.filter(payroll__employee__user=user)
+            qs = qs.all()
+        else:
+            qs = qs.filter(payroll__employee__user=user)
+
+        month = self.request.query_params.get('month')
+        year = self.request.query_params.get('year')
+        if month:
+            qs = qs.filter(payroll__month=month)
+        if year:
+            qs = qs.filter(payroll__year=year)
+        return qs
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdmin])
     def generate(self, request):
@@ -72,7 +81,16 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
         pdf_path = Path(settings.PAYSLIP_ROOT) / payslip.pdf_filename
 
         if not pdf_path.exists():
-            return Response({'detail': 'Payslip file not found.'}, status=status.HTTP_404_NOT_FOUND)
+            # PDF was lost (e.g. after server migration) — regenerate it
+            try:
+                new_filename = generate_payslip_pdf(payslip.payroll)
+                payslip.pdf_filename = new_filename
+                payslip.save(update_fields=['pdf_filename'])
+                pdf_path = Path(settings.PAYSLIP_ROOT) / new_filename
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Failed to regenerate payslip PDF: {e}")
+                return Response({'detail': 'Payslip file not found and could not be regenerated.'}, status=status.HTTP_404_NOT_FOUND)
 
         # Serve with secure headers — forces download, prevents execution
         response = FileResponse(
@@ -87,11 +105,25 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
     def send_email(self, request, pk=None):
         """Send payslip to employee via email."""
         from notifications.email_service import send_payslip_email
+        from pathlib import Path as PathLib
         payslip = self.get_object()
-        success = send_payslip_email(payslip.payroll.employee, payslip)
-        if success:
+
+        # Ensure PDF exists before emailing
+        pdf_path = PathLib(settings.PAYSLIP_ROOT) / payslip.pdf_filename
+        if not pdf_path.exists():
+            try:
+                new_filename = generate_payslip_pdf(payslip.payroll)
+                payslip.pdf_filename = new_filename
+                payslip.save(update_fields=['pdf_filename'])
+            except Exception as e:
+                return Response({'detail': f'PDF regeneration failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        result = send_payslip_email(payslip.payroll.employee, payslip)
+        if result == "simulated":
+            return Response({'detail': 'Email simulated in console (SMTP credentials failed/missing in .env).'})
+        elif result:
             return Response({'detail': 'Email sent successfully.'})
-        return Response({'detail': 'Failed to send email.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'detail': 'Failed to send email. Check SMTP configuration in backend .env'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdmin])
     def send_bulk_emails(self, request):

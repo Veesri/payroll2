@@ -1,0 +1,36 @@
+C:\Users\ELCOT\AppData\Local\Programs\Python\Python313\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!
+  warnings.warn(
+C:\Users\ELCOT\AppData\Local\Programs\Python\Python313\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!
+  warnings.warn(
+Performing system checks...
+
+System check identified no issues (0 silenced).
+June 14, 2026 - 10:01:47
+Django version 5.0.14, using settings 'payroll_backend.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CTRL-BREAK.
+
+C:\Users\ELCOT\AppData\Local\Programs\Python\Python313\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!
+  warnings.warn(
+WARNING 2026-06-14 10:30:54,753 log Bad Request: /api/auth/login/
+WARNING 2026-06-14 10:30:54,769 basehttp "POST /api/auth/login/ HTTP/1.1" 400 33
+Performing system checks...
+
+System check identified no issues (0 silenced).
+June 14, 2026 - 10:09:07
+Django version 5.0.14, using settings 'payroll_backend.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CTRL-BREAK.
+
+C:\Users\ELCOT\AppData\Local\Programs\Python\Python313\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!
+  warnings.warn(
+Performing system checks...
+
+System check identified no issues (0 silenced).
+June 14, 2026 - 10:40:15
+Django version 5.0.14, using settings 'payroll_backend.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CTRL-BREAK.
+
+C:\Users\ELCOT\AppData\Local\Programs\Python\Python313\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!
+  warnings.warn(

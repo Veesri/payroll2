@@ -10,8 +10,21 @@
 import axios from 'axios';
 
 // ─── Environment Config ───────────────────────────────────────────────────────
+const getDynamicApiUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.')) {
+      return `http://${hostname}:8000/api`;
+    }
+  }
+  return 'https://payroll2-mnuo.onrender.com/api';
+};
+
 export const ENV = {
-  API_URL:      import.meta.env.VITE_API_URL      || 'https://payroll2-mnuo.onrender.com/api',
+  API_URL:      getDynamicApiUrl(),
   APP_NAME:     import.meta.env.VITE_APP_NAME     || 'PayrollPro',
   COMPANY_NAME: import.meta.env.VITE_COMPANY_NAME || 'PayrollPro',
   VERSION:      import.meta.env.VITE_APP_VERSION  || '1.0.0',
@@ -58,6 +71,29 @@ api.interceptors.response.use(
       try {
         const refreshToken = sessionStorage.getItem('refresh_token');
         if (refreshToken) {
+          // Pre-check JWT expiration to avoid a redundant 401 network call
+          let isExpired = false;
+          try {
+            const parts = refreshToken.split('.');
+            if (parts.length === 3) {
+              const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+              if (payload.exp && payload.exp * 1000 < Date.now()) {
+                isExpired = true;
+              }
+            } else {
+              isExpired = true;
+            }
+          } catch {
+            isExpired = true;
+          }
+
+          if (isExpired) {
+            clearAccessToken();
+            sessionStorage.removeItem('refresh_token');
+            window.location.href = '/login';
+            return Promise.reject(error);
+          }
+
           if (!refreshPromise) {
             refreshPromise = axios.post(
               `${ENV.API_URL}/auth/token/refresh/`,
@@ -125,7 +161,11 @@ export const employeeAPI = {
 // ─── Attendance APIs ──────────────────────────────────────────────────────────
 export const attendanceAPI = {
   list: (params)  => api.get('/attendance/records/', { params }),
-  scan: (qrData)  => api.post('/attendance/qr/scan/', { qr_data: qrData }),
+  scan: (qrData, scanType = 'auto') => api.post('/attendance/qr/scan/', { qr_data: qrData, scan_type: scanType }),
+  create: (data)  => api.post('/attendance/records/', data),
+  update: (id, data) => api.patch(`/attendance/records/${id}/`, data),
+  delete: (id)  => api.delete(`/attendance/records/${id}/`),
+  seedMockData: () => api.post('/attendance/records/seed-mock-data/'),
 };
 
 // ─── Leave APIs ───────────────────────────────────────────────────────────────
